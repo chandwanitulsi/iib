@@ -3,7 +3,7 @@ import os
 import logging
 import shutil
 import types
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 from kombu import Queue
 from celery import Celery, app
@@ -34,9 +34,13 @@ class Config(object):
     )
     iib_greenwave_url: Optional[str] = None
     iib_grpc_init_wait_time: int = 100
-    iib_grpc_max_port_tries: int = 100
     iib_grpc_max_tries: int = 5
-    iib_grpc_start_port: int = 50051
+    # size of both ranges, needs to be the same, ranges neeeds to be exclusive
+    iib_opm_port_ranges: Dict[str, Tuple[int, int]] = {
+        "opm_port": (50051, 50151),
+        "opm_pprof_port": (50151, 50251),
+    }
+    iib_opm_pprof_lock_required_min_version = "1.29.0"
     iib_image_push_template: str = '{registry}/iib-build:{request_id}'
     iib_index_image_output_registry: Optional[str] = None
     iib_log_level: str = 'INFO'
@@ -71,6 +75,7 @@ class Config(object):
         "ppc64le": "ppc64le",
     }
     iib_default_opm: str = 'opm'
+    iib_related_image_registry_replacement: Optional[Dict[str, Dict[str, str]]] = {}
     include: List[str] = [
         'iib.workers.tasks.build',
         'iib.workers.tasks.build_merge_index_image',
@@ -230,8 +235,8 @@ class DevelopmentConfig(Config):
         "v4.12": "opm-v1.26.4",
         "v4.13": "opm-v1.26.4",
         "v4.14": "opm-v1.26.4",
-        "v4.15": "opm-v1.28.0",
-        "v4.16": "opm-v1.28.0",
+        "v4.15": "opm-v1.26.4",
+        "v4.16": "opm-v1.40.0",
     }
 
 
@@ -306,6 +311,11 @@ def validate_celery_config(conf: app.utils.Settings, **kwargs) -> None:
     if conf.get('iib_no_ocp_label_allow_list'):
         if any(not index for index in conf['iib_no_ocp_label_allow_list']):
             raise ConfigError('Empty string is not allowed in iib_no_ocp_label_allow_list')
+
+    if conf.get('iib_related_image_registry_replacement') and not isinstance(
+        conf['iib_related_image_registry_replacement'], dict
+    ):
+        raise ConfigError('iib_related_image_registry_replacement must be a dictionary')
 
     _validate_multiple_opm_mapping(conf['iib_ocp_opm_mapping'])
     _validate_iib_org_customizations(conf['iib_organization_customizations'])
